@@ -2,20 +2,25 @@ require 'savon'
 
 class Prelink
 
-  @client = Savon::Client.new(GlobalProperty.find_by_property("prelink_wsdl_url").property_value)
-  station_id = GlobalProperty.find_by_property("prelink_station_id").property_value
-  passcode = GlobalProperty.find_by_property("prelink_passcode").property_value
+  def initialize(wsdl_url,station_id,passcode)
+    @client = Savon::Client.new(wsdl_url)
 
-  @soap_header = "
-  <preLinkHeader xmlns='http://www.prelink.co.za/'>
-    <StationId>#{station_id}</StationId>
-    <PassCode>#{passcode}</PassCode>
-  </preLinkHeader>"
-
-  def self.soap_request(soap_body)
+    @soap_header = "
+    <preLinkHeader xmlns='http://www.prelink.co.za/'>
+      <StationId>#{station_id}</StationId>
+      <PassCode>#{passcode}</PassCode>
+    </preLinkHeader>"
   end
 
-  def self.order_request(encounter, options = {})
+  #@client = Savon::Client.new(GlobalProperty.find_by_property("prelink_wsdl_url").property_value)
+  #station_id = GlobalProperty.find_by_property("prelink_station_id").property_value
+  #passcode = GlobalProperty.find_by_property("prelink_passcode").property_value
+
+
+  def soap_request(soap_body)
+  end
+
+  def order_request(encounter, options = {})
     patient = encounter.patient
 
     test_codes = options[:TestCodes] || encounter.observations.map{|observation|
@@ -23,38 +28,32 @@ class Prelink
     }
 
     soap_body = "
-    <OrderRequest xmlns='http://www.prelink.co.za/'>
-      <dto>
-        <PriorityCode>#{options[:PriorityCode] || "R"}</PriorityCode>
-        <DateCollected>#{options[:DateCollected] || DateTime.now}</DateCollected>
-        <DateReceived>#{options[:DateReceived] || DateTime.now}</DateReceived>
-        <FolioNumber>#{options[:FolioNumber] || encounter.encounter_id}</FolioNumber>
-        <PatientFirstName>#{options[:PatientFirstName] || patient.first_name}</PatientFirstName>
-        <PatientLastName>#{options[:PatientLastName] || patient.given_name}</PatientLastName>
-        <PatientIdNumber>#{options[:PatientIdNumber] || patient.national_id}</PatientIdNumber>
-        <PatientAge>#{options[:PatientAge] || patient.age}</PatientAge>
-        <PatientDateOfBirth>#{options[:PatientDateOfBirth] || patient.birthdate}</PatientDateOfBirth>
-        <GenderCode>#{options[:GenderCode] || patient.gender}</GenderCode>
-        <DoctorLocationCode>#{options[:DoctorLocationCode] || encounter.location_id}</DoctorLocationCode>
-        <TestCodes>#{test_codes}</TestCodes>
-      </dto>
-    </OrderRequest>
+      <wsdl:dto>
+        <wsdl:PriorityCode>#{options[:PriorityCode] || "R"}</wsdl:PriorityCode>
+        <wsdl:DateCollected>#{options[:DateCollected] || DateTime.now}</wsdl:DateCollected>
+        <wsdl:DateReceived>#{options[:DateReceived] || DateTime.now}</wsdl:DateReceived>
+        <wsdl:FolioNumber>#{options[:FolioNumber] || encounter.encounter_id}</wsdl:FolioNumber>
+        <wsdl:PatientFirstName>#{options[:PatientFirstName] || patient.first_name}</wsdl:PatientFirstName>
+        <wsdl:PatientLastName>#{options[:PatientLastName] || patient.given_name}</wsdl:PatientLastName>
+        <wsdl:PatientIdNumber>#{options[:PatientIdNumber] || patient.national_id}</wsdl:PatientIdNumber>
+        <wsdl:PatientAge>#{options[:PatientAge] || patient.age}</wsdl:PatientAge>
+        <wsdl:PatientDateOfBirth>#{options[:PatientDateOfBirth] || patient.birthdate}</wsdl:PatientDateOfBirth>
+        <wsdl:GenderCode>#{options[:GenderCode] || patient.gender}</wsdl:GenderCode>
+        <wsdl:DoctorLocationCode>#{options[:DoctorLocationCode] || encounter.location_id}</wsdl:DoctorLocationCode>
+        <wsdl:TestCodes>#{test_codes}</wsdl:TestCodes>
+      </wsdl:dto>
     "
 
     response = @client.order_request {|soap| 
       soap.header = @soap_header
       soap.body = soap_body
     }
-    response.to_hash unless response.soap_fault?
+    response.to_hash[:order_request_response][:order_request_result] unless response.soap_fault?
   end
 
-  def self.test_codes
-    soap_body = "<GetTestCodes xmlns='http://www.prelink.co.za/' />"
-    self.soap_request(soap_body)
-
+  def test_codes
     response = @client.get_test_codes {|soap| 
       soap.header = @soap_header
-      soap.body = soap_body
     }
     return nil if response.soap_fault?
     # This looks nasty. That's soap for you
@@ -72,17 +71,15 @@ class Prelink
     }
   end
 
-  def self.request_result(request_number)
+  def request_result(request_number)
     self.request_results [request_number]
   end
 
-  def self.request_results(request_numbers)
+  def request_results(request_numbers)
     soap_body = "
-      <GetRequestResults xmlns='http://www.prelink.co.za/'>
-        <requestNumber>" + 
-          request_numbers.map{|request_number| "<string>#{request_number}</string>"}.join + "
-        </requestNumber>
-      </GetRequestResults>
+      <requestNumber>" + 
+        request_numbers.map{|request_number| "<string>#{request_number}</string>"}.join + "
+      </requestNumber>
     "
     response = @client.get_request_results {|soap| 
       soap.header = @soap_header
